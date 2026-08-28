@@ -6,7 +6,7 @@ sticky note paper
 tongue_depressor
 tracing_paper
 pen
-nodemcu eps32
+nodemcu esp32
 goggles
 full_cup
 cup_rim
