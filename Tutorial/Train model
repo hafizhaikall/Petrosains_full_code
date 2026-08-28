@@ -1,0 +1,18 @@
+How to train Model 
+
+Step 1: Open the Files Sidebar
+On the very left edge of your screen, look at the column of white icons on the dark sidebar.
+Click the Folder icon 📁 (it's the 6th icon down, right below the key icon).
+this will open the Files panel on the left side of your workspace.
+
+Step 2: Navigate to the Trained Model
+Once the Files panel opens, double-click to open these folders in order:
+Open runs
+Open detect
+Open train (or train2 if you ran it more than once)
+Open weights
+
+Step 3: Find best.pt
+Inside the weights folder, you will see two files:
+last.pt
+best.pt 👈 This is your trained AI model!
