@@ -1,0 +1,39 @@
+import cv2
+from ultralytics import YOLO
+
+# Load your trained PyTorch weights ('best.pt') or exported TFLite model ('best_float32.tflite')
+model = YOLO('best.pt')
+
+# Initialize default webcam (camera index 0)
+cap = cv2.VideoCapture(0)
+
+if not cap.isOpened():
+    print("Error: Could not access webcam.")
+    exit()
+
+# Filter low-confidence predictions (70% threshold)
+CONFIDENCE_THRESHOLD = 0.70
+
+print("Starting live webcam feed. Press 'q' in the window to quit.")
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        print("Error: Failed to grab frame.")
+        break
+
+    # Run detection on current webcam frame
+    results = model(frame, conf=CONFIDENCE_THRESHOLD)
+
+    # Draw bounding boxes and class labels onto frame
+    annotated_frame = results[0].plot()
+
+    # Display live feed video window
+    cv2.imshow("Petrosains Inventory AI - Live Webcam Test", annotated_frame)
+
+    # Press 'q' key to stop
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
