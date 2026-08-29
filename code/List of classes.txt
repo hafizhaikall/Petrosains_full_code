@@ -1,18 +1,17 @@
 List of classes :
 
-ring cup
-scissors
-sticky note paper
+a4_colored_paper	
+Arduino_Uno	
+bag_arduino_20	
+bag_arduino_30	
+box_sticky_note	
+breadboard	
+bundle_arduino	
+cup_rim	
+full_cup	
+goggles	
+nodemcu_esp32	
+pen	
+scissors	
+sticky_note_paper	
 tongue_depressor
-tracing_paper
-pen
-nodemcu esp32
-goggles
-full_cup
-cup_rim
-bundle_arduino
-breadboard
-box sticky note
-bag_arduino_30
-bag_arduino_20
-Arduino_Uno
