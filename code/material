@@ -1,0 +1,33 @@
+1. Download best.pt from Google Colab
+
+Just like you downloaded the .tflite file earlier, you will grab the .pt file from the exact same location in your Colab environment.
+Open the Folder icon on the left side of your Colab notebook.
+Click through the folders: runs -> detect -> train -> weights.
+Look for the file named best.pt (this is the standard PyTorch format, which is ideal for running on a computer webcam rather than a phone).
+Click the three dots next to it and select Download.
+
+2. Set Up Your Antigravity IDE Workspace
+
+Because Google Antigravity is a heavily modified fork of Visual Studio Code, it operates using standard workspace folders.
+Create a new folder on your computer's desktop (e.g., Petrosains_Webcam).
+Open Google Antigravity IDE and open that new folder so it becomes your active workspace.
+Move the best.pt file you just downloaded from your computer's Downloads folder directly into this new Petrosains_Webcam folder.
+
+3. Create the Python Script
+
+Inside the Antigravity IDE file explorer, create a new file and name it webcam_detect.py.
+Paste the webcam Python code I gave you in the previous message into this file.
+Ensure the script and best.pt are sitting next to each other in the exact same folder, then save the file.
+
+4. Run the Code in the Terminal
+
+Antigravity IDE includes a command-line interface and an integrated terminal.
+Open the terminal inside Antigravity IDE (using Ctrl + ~ or the top menu).
+Install the necessary computer vision tools by typing this command and hitting Enter:
+
+Bash
+pip install opencv-python ultralytics
+Once the installation finishes, launch your webcam AI by typing:
+
+Bash
+python webcam_detect.py

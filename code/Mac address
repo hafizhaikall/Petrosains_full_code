@@ -1,0 +1,178 @@
+ESP32#3
+MAC Address: 38:18:2B:2F:2C:70
+
+code :
+#include <esp_now.h>
+#include <WiFi.h>
+#include <esp_wifi.h>
+
+typedef struct struct_message {
+  int store_id;
+  char item_name[32];
+  char category[32];
+  int quantity;
+  char status[16];
+  int items_in;
+  int items_out;
+} struct_message;
+
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  struct_message receivedData;
+  memcpy(&receivedData, incomingData, sizeof(receivedData));
+
+  Serial.println("==========================================");
+  Serial.print(" [INCOMING DATA] From Store: "); Serial.println(receivedData.store_id);
+  Serial.print(" Item: "); Serial.println(receivedData.item_name);
+  Serial.print(" Category: "); Serial.println(receivedData.category);
+  Serial.print(" Quantity: "); Serial.println(receivedData.quantity);
+  Serial.print(" Status: "); Serial.println(receivedData.status);
+  Serial.print(" Items In: "); Serial.println(receivedData.items_in);
+  Serial.print(" Items Out: "); Serial.println(receivedData.items_out);
+  Serial.println("==========================================");
+}
+
+void setup() {
+  Serial.begin(115200);
+  WiFi.mode(WIFI_STA);
+  esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_LR); 
+
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("ESP-NOW Init Failed");
+    return;
+  }
+  esp_now_register_recv_cb(esp_now_recv_cb_t(OnDataRecv));
+  Serial.println("ESP32 #3 Gateway Ready - Waiting for data...");
+}
+
+void loop() {}
+
+ESP32#2
+MAC Address: 4c:c3:82:0d:51:0c
+
+#include <esp_now.h>
+#include <WiFi.h>
+#include <esp_wifi.h>
+
+// REPLACE WITH MAC ADDRESS OF ESP32 #3
+uint8_t esp3_MacAddress[] = {0x24, 0x6F, 0x28, 0xAB, 0xCD, 0xEF};
+
+typedef struct struct_message {
+  int store_id;
+  char item_name[32];
+  char category[32];
+  int quantity;
+  char status[16];
+  int items_in;
+  int items_out;
+} struct_message;
+
+struct_message localData;
+esp_now_peer_info_t peerInfo;
+
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  struct_message relayedData;
+  memcpy(&relayedData, incomingData, sizeof(relayedData));
+  // Forward packet to ESP32 #3
+  esp_now_send(esp3_MacAddress, (uint8_t *) &relayedData, sizeof(relayedData));
+}
+
+void setup() {
+  Serial.begin(115200);
+  WiFi.mode(WIFI_STA);
+  esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_LR);
+
+  if (esp_now_init() != ESP_OK) return;
+
+  esp_now_register_recv_cb(esp_now_recv_cb_t(OnDataRecv));
+
+  memcpy(peerInfo.peer_addr, esp3_MacAddress, 6);
+  peerInfo.channel = 1;
+  peerInfo.encrypt = false;
+  esp_now_add_peer(&peerInfo);
+}
+
+void loop() {
+  if (Serial.available() > 0) {
+    String incoming = Serial.readStringUntil('\n');
+    incoming.trim();
+
+    int idx1 = incoming.indexOf(',');
+    int idx2 = incoming.indexOf(',', idx1 + 1);
+    int idx3 = incoming.indexOf(',', idx2 + 1);
+    int idx4 = incoming.indexOf(',', idx3 + 1);
+    int idx5 = incoming.indexOf(',', idx4 + 1);
+
+    if (idx1 > 0 && idx5 > 0) {
+      localData.store_id = 3; 
+      incoming.substring(0, idx1).toCharArray(localData.item_name, 32);
+      incoming.substring(idx1 + 1, idx2).toCharArray(localData.category, 32);
+      localData.quantity = incoming.substring(idx2 + 1, idx3).toInt();
+      incoming.substring(idx3 + 1, idx4).toCharArray(localData.status, 16);
+      localData.items_in = incoming.substring(idx4 + 1, idx5).toInt();
+      localData.items_out = incoming.substring(idx5 + 1).toInt();
+
+      esp_now_send(esp3_MacAddress, (uint8_t *) &localData, sizeof(localData));
+    }
+  }
+}
+
+
+ESP32#1
+
+#include <esp_now.h>
+#include <WiFi.h>
+#include <esp_wifi.h>
+
+// REPLACE WITH MAC ADDRESS OF ESP32 #2
+uint8_t esp2_MacAddress[] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+
+typedef struct struct_message {
+  int store_id;
+  char item_name[32];
+  char category[32];
+  int quantity;
+  char status[16];
+  int items_in;
+  int items_out;
+} struct_message;
+
+struct_message sendData;
+esp_now_peer_info_t peerInfo;
+
+void setup() {
+  Serial.begin(115200);
+  WiFi.mode(WIFI_STA);
+  esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_LR);
+
+  if (esp_now_init() != ESP_OK) return;
+
+  memcpy(peerInfo.peer_addr, esp2_MacAddress, 6);
+  peerInfo.channel = 1;
+  peerInfo.encrypt = false;
+  esp_now_add_peer(&peerInfo);
+}
+
+void loop() {
+  if (Serial.available() > 0) {
+    String incoming = Serial.readStringUntil('\n');
+    incoming.trim();
+
+    int idx1 = incoming.indexOf(',');
+    int idx2 = incoming.indexOf(',', idx1 + 1);
+    int idx3 = incoming.indexOf(',', idx2 + 1);
+    int idx4 = incoming.indexOf(',', idx3 + 1);
+    int idx5 = incoming.indexOf(',', idx4 + 1);
+
+    if (idx1 > 0 && idx5 > 0) {
+      sendData.store_id = 4;
+      incoming.substring(0, idx1).toCharArray(sendData.item_name, 32);
+      incoming.substring(idx1 + 1, idx2).toCharArray(sendData.category, 32);
+      sendData.quantity = incoming.substring(idx2 + 1, idx3).toInt();
+      incoming.substring(idx3 + 1, idx4).toCharArray(sendData.status, 16);
+      sendData.items_in = incoming.substring(idx4 + 1, idx5).toInt();
+      sendData.items_out = incoming.substring(idx5 + 1).toInt();
+
+      esp_now_send(esp2_MacAddress, (uint8_t *) &sendData, sizeof(sendData));
+    }
+  }
+}

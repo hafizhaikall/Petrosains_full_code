@@ -1,0 +1,78 @@
+import cv2
+from collections import Counter
+from ultralytics import YOLO
+
+# Load model weights
+model = YOLO('weights.pt')  # Change to 'best.pt' if renamed
+
+cap = cv2.VideoCapture(0)
+
+if not cap.isOpened():
+    print("Error: Could not access webcam.")
+    exit()
+
+CONFIDENCE_THRESHOLD = 0.70
+WINDOW_NAME = "Petrosains Inventory AI - Live Detection"
+
+print("Starting live detection. Press 'q' or 'Esc' to exit.")
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        print("Error: Failed to grab frame.")
+        break
+
+    # Run detection
+    results = model(frame, conf=CONFIDENCE_THRESHOLD)
+
+    # Annotate frame with bounding boxes
+    annotated_frame = results[0].plot()
+
+    # Extract detected classes and tally counts
+    boxes = results[0].boxes
+    if boxes is not None and len(boxes) > 0:
+        # Convert class indices to integers
+        class_ids = [int(c) for c in boxes.cls]
+        counts = Counter(class_ids)
+
+        # Draw semi-transparent background box for readability
+        cv2.rectangle(annotated_frame, (10, 10), (320, 30 + (len(counts) * 35)), (0, 0, 0), -1)
+
+        # Overlay total counts per class
+        y_offset = 40
+        cv2.putText(
+            annotated_frame,
+            "INVENTORY COUNTS:",
+            (20, y_offset),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 255, 255),
+            2,
+            cv2.LINE_AA
+        )
+
+        for class_id, count in counts.items():
+            y_offset += 30
+            class_name = model.names[class_id]
+            text = f"{class_name}: {count}"
+            cv2.putText(
+                annotated_frame,
+                text,
+                (20, y_offset),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (255, 255, 255),
+                2,
+                cv2.LINE_AA
+            )
+
+    # Display standard window frame
+    cv2.imshow(WINDOW_NAME, annotated_frame)
+
+    # Press 'q' or Esc key to quit
+    key = cv2.waitKey(1) & 0xFF
+    if key == ord('q') or key == 27:
+        break
+
+cap.release()
+cv2.destroyAllWindows()

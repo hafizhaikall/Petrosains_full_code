@@ -1,0 +1,11 @@
+petrosains 
+
+version 5 :
+
+!pip install roboflow
+
+from roboflow import Roboflow
+rf = Roboflow(api_key="ijaZtN3uMvyK0cviPNwL")
+project = rf.workspace("hafizuddin-haikal-bin-abdul-haffizi").project("petrosains-inventory")
+version = project.version(5)
+dataset = version.download("yolov8")
