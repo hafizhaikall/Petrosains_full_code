@@ -1,0 +1,6 @@
+{
+  "name": "Smart Inventory",
+  "description": "Smart Inventory Management mobile app with AI image recognition.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

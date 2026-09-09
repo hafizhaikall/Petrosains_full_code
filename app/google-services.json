@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "709594105089",
+    "project_id": "smart-inventory-2f266",
+    "storage_bucket": "smart-inventory-2f266.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:709594105089:android:e5ff04203e122f1d55c700",
+        "android_client_info": {
+          "package_name": "com.example.smartinventory"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAR06d0z7Ez_NVLX0Un2DYsP9NHppddAPs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
