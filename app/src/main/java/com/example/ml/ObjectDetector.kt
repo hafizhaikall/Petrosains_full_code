@@ -148,11 +148,21 @@ class ObjectDetector(private val context: Context) {
                         if (score >= CONFIDENCE_THRESHOLD) {
                             val classId = row[5].toInt().coerceIn(0, labels.size - 1)
                             val label = labels.getOrElse(classId) { "item_$classId" }
+                            var x1 = row[0]
+                            var y1 = row[1]
+                            var x2 = row[2]
+                            var y2 = row[3]
+                            if (x1 > 1.0f || x2 > 1.0f || y1 > 1.0f || y2 > 1.0f) {
+                                x1 /= inputWidth
+                                y1 /= inputHeight
+                                x2 /= inputWidth
+                                y2 /= inputHeight
+                            }
                             val box = RectF(
-                                row[0].coerceIn(0f, 1f),
-                                row[1].coerceIn(0f, 1f),
-                                row[2].coerceIn(0f, 1f),
-                                row[3].coerceIn(0f, 1f)
+                                x1.coerceIn(0f, 1f),
+                                y1.coerceIn(0f, 1f),
+                                x2.coerceIn(0f, 1f),
+                                y2.coerceIn(0f, 1f)
                             )
                             Log.i(TAG, "Detection candidate (features=6): classId=$classId, label='$label', score=$score")
                             rawDetections.add(DetectionResult(label, score, box))

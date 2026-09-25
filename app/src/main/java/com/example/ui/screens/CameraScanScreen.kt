@@ -6,11 +6,13 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.camera.core.AspectRatio
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
@@ -43,11 +45,22 @@ import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import androidx.navigation.NavController
+import androidx.compose.ui.platform.LocalConfiguration
+import android.graphics.RectF
+import androidx.compose.foundation.clickable
 import com.example.data.EntryResult
 import com.example.data.ScannedItemResult
 import com.example.data.TransactionType
 import com.example.viewmodel.DetectionSource
 import com.example.viewmodel.InventoryViewModel
+import com.example.ml.RealTimeAnalyzer
+import com.example.ml.ObjectDetector.DetectionResult
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.nativeCanvas
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
@@ -323,8 +336,19 @@ fun CameraPreviewView(
     onScanCode: (String) -> Unit,
     onClose: () -> Unit
 ) {
-    var imageCapture: ImageCapture? by remember { mutableStateOf(null) }
     val detectionSource by viewModel.detectionSource.collectAsState()
+    val liveDetections by viewModel.liveDetections.collectAsState()
+    val detectionFrameSize by viewModel.detectionFrameSize.collectAsState()
+
+    var isUltraWideActive by remember { mutableStateOf(true) }
+    var minZoomRatio by remember { mutableFloatStateOf(1.0f) }
+    var cameraControl by remember { mutableStateOf<androidx.camera.core.CameraControl?>(null) }
+
+    val configuration = LocalConfiguration.current
+    val screenWidthDp = configuration.screenWidthDp.toFloat()
+    val screenHeightDp = configuration.screenHeightDp.toFloat()
+    val boxWidthDp = screenWidthDp * 0.85f
+    val boxHeightDp = screenHeightDp * 0.85f
 
     DisposableEffect(lifecycleOwner) {
         onDispose {
@@ -346,27 +370,43 @@ fun CameraPreviewView(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
+                    scaleType = PreviewView.ScaleType.FILL_CENTER
                 }
 
                 val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
                 cameraProviderFuture.addListener({
                     val cameraProvider = cameraProviderFuture.get()
 
-                    val preview = Preview.Builder().build().also {
-                        it.setSurfaceProvider(previewView.surfaceProvider)
-                    }
+                    val preview = Preview.Builder()
+                        .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                        .build().also {
+                            it.setSurfaceProvider(previewView.surfaceProvider)
+                        }
 
-                    imageCapture = ImageCapture.Builder()
-                        .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                    val imageAnalysis = ImageAnalysis.Builder()
+                        .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                         .build()
+                        .also { analysis ->
+                            analysis.setAnalyzer(
+                                ContextCompat.getMainExecutor(ctx),
+                                RealTimeAnalyzer(viewModel.getDetector(ctx), null) { results, frameW, frameH ->
+                                    viewModel.updateLiveDetections(results, frameW, frameH)
+                                }
+                            )
+                        }
 
                     val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
                     try {
                         cameraProvider.unbindAll()
-                        cameraProvider.bindToLifecycle(
-                            lifecycleOwner, cameraSelector, preview, imageCapture
+                        val camera = cameraProvider.bindToLifecycle(
+                            lifecycleOwner, cameraSelector, preview, imageAnalysis
                         )
+                        val minZoom = camera.cameraInfo.zoomState.value?.minZoomRatio ?: 1.0f
+                        minZoomRatio = minZoom
+                        cameraControl = camera.cameraControl
+                        camera.cameraControl.setZoomRatio(if (isUltraWideActive) minZoom else 1.0f)
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
@@ -377,13 +417,13 @@ fun CameraPreviewView(
             modifier = Modifier.fillMaxSize()
         )
 
-        // --- Top bar overlay with close button & title ---
+        // --- Top bar overlay with close button ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.Start,
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
@@ -394,21 +434,6 @@ fun CameraPreviewView(
             ) {
                 Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
             }
-
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = Color.Black.copy(alpha = 0.5f)
-            ) {
-                Text(
-                    text = "Scan Barcode / Item",
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.size(44.dp))
         }
 
         // --- Scanning overlay ---
@@ -441,30 +466,96 @@ fun CameraPreviewView(
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .size(240.dp)
+                    .size(width = boxWidthDp.dp, height = boxHeightDp.dp)
                     .background(Color.Transparent)
             )
-            CornerFrame(modifier = Modifier.align(Alignment.Center))
+            CornerFrame(
+                widthDp = boxWidthDp.dp,
+                heightDp = boxHeightDp.dp,
+                modifier = Modifier.align(Alignment.Center)
+            )
         }
 
-        // --- Capture button ---
+        // --- Live Bounding Boxes Overlay ---
+        if (liveDetections.isNotEmpty() && !isScanning && !isItemCodeScanning) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val canvasWidth = size.width
+                val canvasHeight = size.height
+
+                // Calculate exact scaling and offsets to match PreviewView's FILL_CENTER
+                val frameAspect = detectionFrameSize?.let { (w, h) ->
+                    if (h > 0) w.toFloat() / h.toFloat() else null
+                } ?: (9f / 16f)
+
+                val canvasAspect = canvasWidth / canvasHeight
+
+                val scaledWidth: Float
+                val scaledHeight: Float
+                val offsetX: Float
+                val offsetY: Float
+
+                if (canvasAspect > frameAspect) {
+                    // Screen is wider than camera stream -> crop top and bottom
+                    scaledWidth = canvasWidth
+                    scaledHeight = canvasWidth / frameAspect
+                    offsetX = 0f
+                    offsetY = (canvasHeight - scaledHeight) / 2f
+                } else {
+                    // Screen is narrower/taller than camera stream (standard portrait) -> crop left and right
+                    scaledHeight = canvasHeight
+                    scaledWidth = canvasHeight * frameAspect
+                    offsetX = (canvasWidth - scaledWidth) / 2f
+                    offsetY = 0f
+                }
+
+                liveDetections.forEach { detection ->
+                    val box = detection.boundingBox
+                    val left = box.left * scaledWidth + offsetX
+                    val top = box.top * scaledHeight + offsetY
+                    val right = box.right * scaledWidth + offsetX
+                    val bottom = box.bottom * scaledHeight + offsetY
+                    val w = right - left
+                    val h = bottom - top
+
+                    // Draw bounding box
+                    drawRect(
+                        color = Color.Green,
+                        topLeft = Offset(left, top),
+                        size = Size(w, h),
+                        style = Stroke(width = 6f)
+                    )
+
+                    // Draw label text
+                    val paint = Paint().asFrameworkPaint().apply {
+                        color = android.graphics.Color.GREEN
+                        textSize = 42f
+                        isFakeBoldText = true
+                        setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
+                    }
+                    val text = "${detection.label} (${(detection.confidence * 100).toInt()}%)"
+                    drawContext.canvas.nativeCanvas.drawText(
+                        text,
+                        left.coerceAtLeast(12f),
+                        (top - 12f).coerceAtLeast(42f),
+                        paint
+                    )
+                }
+            }
+        }
+
+        // --- Capture button (Manual override, or triggers Gemini) ---
         Button(
             onClick = {
                 if (isScanning || isItemCodeScanning) return@Button
-                val capture = imageCapture ?: return@Button
-                capture.takePicture(
-                    ContextCompat.getMainExecutor(context),
-                    object : ImageCapture.OnImageCapturedCallback() {
-                        override fun onCaptureSuccess(image: ImageProxy) {
-                            val bitmap = imageProxyToBitmap(image)
-                            image.close()
-                            onImageCaptured(bitmap)
-                        }
-                        override fun onError(exception: ImageCaptureException) {
-                            exception.printStackTrace()
-                        }
-                    }
-                )
+                // Instead of taking a photo via ImageCapture, we just trigger Gemini/TFLite fallback 
+                // on the last seen bounding boxes, or we'd ideally capture from preview. 
+                // For simplicity, since the preview view has the image, we can just use the latest detection.
+                if (liveDetections.isNotEmpty()) {
+                    // We can just simulate the smart detection grouping
+                    viewModel.processLiveDetectionCapture(liveDetections)
+                } else {
+                    Toast.makeText(context, "No objects detected yet. Please hold steady.", Toast.LENGTH_SHORT).show()
+                }
             },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -475,6 +566,58 @@ fun CameraPreviewView(
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
         ) {
             Icon(Icons.Default.CameraAlt, contentDescription = "Capture", modifier = Modifier.size(32.dp))
+        }
+
+        // --- Lens Toggle Switch ---
+        if (minZoomRatio < 1.0f && !isScanning && !isItemCodeScanning) {
+            Surface(
+                shape = CircleShape,
+                color = Color.Black.copy(alpha = 0.6f),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 120.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(4.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val activeColor = MaterialTheme.colorScheme.primary
+                    val inactiveColor = Color.Transparent
+                    
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isUltraWideActive) activeColor else inactiveColor,
+                        modifier = Modifier.clickable {
+                            isUltraWideActive = true
+                            cameraControl?.setZoomRatio(minZoomRatio)
+                        }
+                    ) {
+                        Text(
+                            text = "0.5x",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+                    
+                    Surface(
+                        shape = CircleShape,
+                        color = if (!isUltraWideActive) activeColor else inactiveColor,
+                        modifier = Modifier.clickable {
+                            isUltraWideActive = false
+                            cameraControl?.setZoomRatio(1.0f)
+                        }
+                    ) {
+                        Text(
+                            text = "1x",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+                }
+            }
         }
 
         // --- Hint label ---
@@ -795,12 +938,12 @@ fun ScannedItemDetailDialog(
 
 /** Draws a simple corner-bracket viewfinder frame. */
 @Composable
-private fun CornerFrame(modifier: Modifier = Modifier) {
+private fun CornerFrame(widthDp: androidx.compose.ui.unit.Dp, heightDp: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
     val strokeColor = Color.White.copy(alpha = 0.85f)
     val cornerSize = 32.dp
     val strokeWidth = 3.dp
 
-    Box(modifier = modifier.size(240.dp)) {
+    Box(modifier = modifier.size(width = widthDp, height = heightDp)) {
         // Top-left
         Box(modifier = Modifier.align(Alignment.TopStart)) {
             Box(modifier = Modifier.width(cornerSize).height(strokeWidth).background(strokeColor))

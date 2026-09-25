@@ -14,6 +14,7 @@ import androidx.work.WorkManager
 import com.example.smartinventory.BuildConfig
 import com.example.data.*
 import com.example.ml.ObjectDetector
+import com.example.ml.ObjectDetector.DetectionResult
 import com.example.network.*
 import com.example.worker.FirebaseSyncWorker
 import kotlinx.coroutines.Dispatchers
@@ -113,6 +114,19 @@ class InventoryViewModel(
 
     private val _isScanning = MutableStateFlow(false)
     val isScanning: StateFlow<Boolean> = _isScanning.asStateFlow()
+
+    private val _liveDetections = MutableStateFlow<List<DetectionResult>>(emptyList())
+    val liveDetections: StateFlow<List<DetectionResult>> = _liveDetections.asStateFlow()
+
+    private val _detectionFrameSize = MutableStateFlow<Pair<Int, Int>?>(null)
+    val detectionFrameSize: StateFlow<Pair<Int, Int>?> = _detectionFrameSize.asStateFlow()
+    
+    fun updateLiveDetections(detections: List<DetectionResult>, frameWidth: Int = 0, frameHeight: Int = 0) {
+        _liveDetections.value = detections
+        if (frameWidth > 0 && frameHeight > 0) {
+            _detectionFrameSize.value = Pair(frameWidth, frameHeight)
+        }
+    }
 
     private val _isScannerPaused = MutableStateFlow(false)
     val isScannerPaused: StateFlow<Boolean> = _isScannerPaused.asStateFlow()
@@ -278,8 +292,21 @@ class InventoryViewModel(
         viewModelScope.launch { repository.sessionManager.clearSession() }
     }
 
+    fun getDetector(context: Context): ObjectDetector {
+        return tfliteDetector ?: ObjectDetector(context).also { tfliteDetector = it }
+    }
+
     fun selectStore(storeId: String) {
         viewModelScope.launch { repository.sessionManager.saveCurrentStore(storeId) }
+    }
+
+    fun processLiveDetectionCapture(detections: List<DetectionResult>) {
+        if (_isScannerPaused.value) return
+        _isScanning.value = true
+        _detectionSource.value = DetectionSource.TFLITE
+        val grouped = aggregateDetections(detections)
+        _aiScanResult.value = grouped
+        _isScanning.value = false
     }
 
     /**
@@ -332,7 +359,15 @@ class InventoryViewModel(
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
                 val base64Image = Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
 
-                val prompt = "Analyze this image and identify inventory items. Count their quantity. Respond with a JSON array of objects with fields: 'itemName' (string), 'quantity' (integer), 'itemType' (string), and 'confidence' (float 0-100)."
+                val catalogSummary = _storeInventoryItems.value.joinToString(", ") { "${it.item_name} (Code: ${it.item_code})" }
+                
+                val prompt = """
+                    Analyze this image and identify inventory items. Count their quantity. 
+                    IMPORTANT: You are looking at items in a scientific inventory room. 
+                    The allowed items in this room are: [$catalogSummary]. 
+                    Do NOT guess generic names. Match the items exactly to the allowed list above if possible.
+                    Respond with a JSON array of objects with fields: 'itemName' (string), 'quantity' (integer), 'itemType' (string), and 'confidence' (float 0-100).
+                """.trimIndent()
 
                 val request = GenerateContentRequest(
                     contents = listOf(Content(
